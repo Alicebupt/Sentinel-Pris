@@ -339,7 +339,7 @@ class KeyPointAnalyzer(object):
                                                 }]
                                     },,,] 
         @return to_format: dict,{
-                                '11.确认卡片是否在手': {'keypoint': keypoint, # 所属关键点
+                                '11.确认卡片是否在手': {
                                                      'sentence': '',  # 匹配到的原句中的句子
                                                      'score': 0.53,   # 相似度分值
                                                      'compared_source': '', # 匹配库中的句子
@@ -355,16 +355,14 @@ class KeyPointAnalyzer(object):
         if from_format == []:
             return to_format
         for item in from_format:
-            for one_sentence in item['matched']:
-                to_format[one_sentence['sentence']] = one_sentence
-                to_format[one_sentence['sentence']]['keypoint'] = item['keypoint']
+            to_format[item['keypoint']] = item['matched']
         return to_format
 
     def transform_result_dict_to_list(self, from_format):
     	'''
     	转换格式，将结果的dict格式转换为list格式
     	@param from_format： dict,{
-                                '11.确认卡片是否在手': {'keypoint': keypoint, # 所属关键点
+                                '11.确认卡片是否在手': {
                                                      'sentence': '',  # 匹配到的原句中的句子
                                                      'score': 0.53,   # 相似度分值
                                                      'compared_source': '', # 匹配库中的句子
@@ -388,19 +386,8 @@ class KeyPointAnalyzer(object):
 	                                },,,] 
     	'''
     	to_format = []
-    	for sentence in from_format.keys():
-            flag = 0 # 句子内容是否被成功添加至结果里的标志
-            for keypoint_index in range(len(to_format)):
-                keypoint = to_format[keypoint_index]['keypoint']
-                if from_format[sentence]['keypoint'] == keypoint:
-                    del from_format[sentence]['keypoint']
-                    to_format[keypoint_index]['matched'].append(from_format[sentence])
-                    flag = 1
-            if flag == 0: # 未匹配到已有关键点，则新增关键点
-                new_keypoint = {'keypoint':from_format[sentence]['keypoint']}
-                del from_format[sentence]['keypoint']
-                new_keypoint['matched'] = [from_format[sentence]]
-                to_format.append(new_keypoint)
+    	for keypoint in from_format.keys():
+            to_format.append({'keypoint':keypoint, 'matched':from_format[keypoint]})
     	return to_format
 
 
@@ -412,40 +399,25 @@ class KeyPointAnalyzer(object):
     	       word2vec_result： dict, word2vec算法获得的结果
     	@return combine_result: list, 合并之后的结果
 
-
-        dict,{
-            '11.确认卡片是否在手': {'keypoint': keypoint, # 所属关键点
-                                 'sentence': '',  # 匹配到的原句中的句子
-                                 'score': 0.53,   # 相似度分值
-                                 'compared_source': '', # 匹配库中的句子
-                                 'regex': '', # 置空
-                                 'start_time': '0.00', 
-                                 'end_time': '3.83', 
-                                 'source_sentence': ''  # 子句源句},
-                         
-                        }],,,
-                } 
     	'''
         le_result_dic = self.transform_result_list_to_dict(le_result) # 将获得的结果的list格式转化为dict格式方便后续处理
-        # print(le_result_dic)
         regex_result_dic = self.transform_result_list_to_dict(regex_result)
-        # print(regex_result_dic)
         word2vec_result_dic = self.transform_result_list_to_dict(word2vec_result)
         combine_result_dict = {}
         all_result = [regex_result_dic, word2vec_result_dic, le_result_dic] # 有一定的优先级，当分数相同时取前面的结果
-        for result in all_result:  # 对所有结果进行遍历，对于同一句话，按相似度分值判断取哪个方法的结果
-            if result == {}:
-                continue
-            for sentence in result.keys():
-                if sentence not in combine_result_dict.keys():
-                    combine_result_dict[sentence] = result[sentence]
+        for result in all_result:
+            for keypoint in result.keys():
+                if keypoint not in combine_result_dict.keys():
+                    combine_result_dict[keypoint] = result[keypoint]
                 else:
-                    new_score = result[sentence]['score']
-                    last_score = combine_result_dict[sentence]['score']
-                    if new_score > last_score: # 只有分数值大于前面的结果时才能覆盖，即分数相等时，前面的结果优先级更高
-                        combine_result_dict[sentence] = result[sentence]
-        print(combine_result_dict)
-        combine_result = self.transform_result_dict_to_list(combine_result_dict)
+                    combine_result_dict[keypoint].extend(result[keypoint])
+        new_combine_result_dict = {}
+        for keypoint in combine_result_dict.keys():
+            if len(combine_result_dict[keypoint]) > 1:
+                new_combine_result_dict[keypoint] = combine(combine_result_dict[keypoint])
+            else:
+                new_combine_result_dict[keypoint] = combine_result_dict[keypoint]
+        combine_result = self.transform_result_dict_to_list(new_combine_result_dict)
         return combine_result
 
 
@@ -483,10 +455,7 @@ class KeyPointAnalyzer(object):
             le_result = self.run_levenshtein(transcripts=transcripts, topic=topic)
             regex_result = self.run_regex(transcripts=transcripts, topic=topic)
             w2v_result = self.run_word2vec(transcripts=transcripts, topic=topic)
-            print(le_result)
-            print(regex_result)
-            print(w2v_result)
-
+            
             # 合并算法结果
             result = self.combine_result(le_result=le_result, regex_result=regex_result,word2vec_result=w2v_result)
             
@@ -644,9 +613,9 @@ if __name__ == '__main__':
 
     # test dialogs,后台实际调用的function
     t1 = time.time()
-    dialogs = [{"transcripts": transcripts, "id": "dfrvfv", "topic":topic}]
-    print("测试多个对话：", key_point.test(dialogs=dialogs), time.time()-t1)
-    # le_result = [{'keypoint': '确认资金用途', 'matched': [{'sentence': '请问您资金用途是？', 'score': 0.7, 'compared_source': '请问您资金用途是？', 'regex': '', 'start_time': '17.86', 'end_time': '23.92', 'source_sentence': '请问您资金用途是？'}]}]
-    # regex_result = [{'keypoint': '确认资金用途', 'matched': [{'sentence': '请问您资金用途是？', 'score': 1.0, 'compared_source': '请问您资金用途是？', 'regex': 'ssssss', 'start_time': '17.86', 'end_time': '23.92', 'source_sentence': '请问您资金用途是？'}]},{'keypoint': '转IVR确认储蓄卡卡号', 'matched': [{'sentence': '好谢谢您那现在麻烦您把信用卡翻到背面卡片在手上的是吧请您把信用卡翻到背面白色签名条上有七位数字给您一个语音提示请您把七位数字中的后三位输入进来验证一下好吧', 'score': 1.0, 'compared_source': '', 'regex': '语音提示', 'start_time': '0.00', 'end_time': '3.83', 'source_sentence': '好谢谢您那现在麻烦您把信用卡翻到背面卡片在手上的是吧请您把信用卡翻到背面白色签名条上有七位数字给您一个语音提示请您把七位数字中的后三位输入进来验证一下好吧'}]}, {'keypoint': '确认储蓄卡是否为I类账户', 'matched': [{'sentence': '请问你的储蓄卡是一类账户么？本期账单还款还需要', 'score': 1.0, 'compared_source': '', 'regex': '是(.*)一类账户(吗|么|嘛)', 'start_time': '23.92', 'end_time': '30.94', 'source_sentence': '请问你的储蓄卡是一类账户么？本期账单还款还需要'}]}, {'keypoint': '确认储蓄卡开户6个月内是否有交易', 'matched': [{'sentence': '好的那这边和验证通过了那您这张中信信用卡的最后一笔交易是在是在什么时候或者是多少金额您要提供一下', 'score': 1.0, 'compared_source': '', 'regex': '最后.?一笔', 'start_time': '59.01', 'end_time': '64.44', 'source_sentence': '好的那这边和验证通过了那您这张中信信用卡的最后一笔交易是在是在什么时候或者是多少金额您要提供一下'}]}]
-    # w2v_result = [{'keypoint': '确认资金用途', 'matched': [{'sentence': '请问您资金用途是？', 'score':0.8, 'compared_source': '请问您资金用途是？', 'regex': '', 'start_time': '17.86', 'end_time': '23.92', 'source_sentence': '请问您资金用途是？'}]},{'keypoint': '转IVR确认储蓄卡卡号', 'matched': [{'sentence': '好谢谢您那现在麻烦您把信用卡翻到背面卡片在手上的是吧请您把信用卡翻到背面白色签名条上有七位数字给您一个语音提示请您把七位数字中的后三位输入进来验证一下好吧', 'score': 1.0, 'compared_source': '', 'regex': '语音提示', 'start_time': '0.00', 'end_time': '3.83', 'source_sentence': '好谢谢您那现在麻烦您把信用卡翻到背面卡片在手上的是吧请您把信用卡翻到背面白色签名条上有七位数字给您一个语音提示请您把七位数字中的后三位输入进来验证一下好吧'}]}, {'keypoint': '确认储蓄卡是否为I类账户', 'matched': [{'sentence': '请问你的储蓄卡是一类账户么？本期账单还款还需要', 'score': 1.0, 'compared_source': '', 'regex': '是(.*)一类账户(吗|么|嘛)', 'start_time': '23.92', 'end_time': '30.94', 'source_sentence': '请问你的储蓄卡是一类账户么？本期账单还款还需要'}]}, {'keypoint': '确认储蓄卡开户6个月内是否有交易', 'matched': [{'sentence': '好的那这边和验证通过了那您这张中信信用卡的最后一笔交易是在是在什么时候或者是多少金额您要提供一下', 'score': 1.0, 'compared_source': '', 'regex': '最后.?一笔', 'start_time': '59.01', 'end_time': '64.44', 'source_sentence': '好的那这边和验证通过了那您这张中信信用卡的最后一笔交易是在是在什么时候或者是多少金额您要提供一下'}]}]
-    # print("测试算法融合结果：", key_point.combine_result(le_result=le_result))
+    # dialogs = [{"transcripts": transcripts, "id": "dfrvfv", "topic":topic}]
+    # print("测试多个对话：", key_point.test(dialogs=dialogs), time.time()-t1)
+    le_result = [{'keypoint': '确认资金用途', 'matched': [{'sentence': '请问您资金用途是？m', 'score': 0.7, 'compared_source': '请问您资金用途是？', 'regex': '', 'start_time': '17.86', 'end_time': '23.92', 'source_sentence': '请问您资金用途是？'}]}]
+    regex_result = [{'keypoint': '确认资金用途', 'matched': [{'sentence': '请问您资金用途是gan？', 'score': 1.0, 'compared_source': '请问您资金用途是？', 'regex': 'ssssss', 'start_time': '17.86', 'end_time': '23.92', 'source_sentence': '请问您资金用途是？'}]},{'keypoint': '转IVR确认储蓄卡卡号', 'matched': [{'sentence': '好谢谢您那现在麻烦您把信用卡翻到背面卡片在手上的是吧请您把信用卡翻到背面白色签名条上有七位数字给您一个语音提示请您把七位数字中的后三位输入进来验证一下好吧', 'score': 1.0, 'compared_source': '', 'regex': '语音提示', 'start_time': '0.00', 'end_time': '3.83', 'source_sentence': '好谢谢您那现在麻烦您把信用卡翻到背面卡片在手上的是吧请您把信用卡翻到背面白色签名条上有七位数字给您一个语音提示请您把七位数字中的后三位输入进来验证一下好吧'}]}, {'keypoint': '确认储蓄卡是否为I类账户', 'matched': [{'sentence': '请问你的储蓄卡是一类账户么？本期账单还款还需要', 'score': 1.0, 'compared_source': '', 'regex': '是(.*)一类账户(吗|么|嘛)', 'start_time': '23.92', 'end_time': '30.94', 'source_sentence': '请问你的储蓄卡是一类账户么？本期账单还款还需要'}]}, {'keypoint': '确认储蓄卡开户6个月内是否有交易', 'matched': [{'sentence': '好的那这边和验证通过了那您这张中信信用卡的最后一笔交易是在是在什么时候或者是多少金额您要提供一下', 'score': 1.0, 'compared_source': '', 'regex': '最后.?一笔', 'start_time': '59.01', 'end_time': '64.44', 'source_sentence': '好的那这边和验证通过了那您这张中信信用卡的最后一笔交易是在是在什么时候或者是多少金额您要提供一下'}]}]
+    w2v_result = [{'keypoint': '确认资金用途', 'matched': [{'sentence': '请问您资金用途是？', 'score':0.8, 'compared_source': '请问您资金用途是？', 'regex': '', 'start_time': '17.86', 'end_time': '23.92', 'source_sentence': '请问您资金用途是？'}]},{'keypoint': '转IVR确认储蓄卡卡号', 'matched': [{'sentence': '好谢谢您那现在麻烦您把信用卡翻到背面卡片在手上的是吧请您把信用卡翻到背面白色签名条上有七位数字给您一个语音提示请您把七位数字中的后三位输入进来验证一下好吧', 'score': 1.0, 'compared_source': '', 'regex': '语音提示', 'start_time': '0.00', 'end_time': '3.83', 'source_sentence': '好谢谢您那现在麻烦您把信用卡翻到背面卡片在手上的是吧请您把信用卡翻到背面白色签名条上有七位数字给您一个语音提示请您把七位数字中的后三位输入进来验证一下好吧'}]}, {'keypoint': '确认储蓄卡是否为I类账户', 'matched': [{'sentence': '请问你的储蓄卡是一类账户么？本期账单还款还需要', 'score': 1.0, 'compared_source': '', 'regex': '是(.*)一类账户(吗|么|嘛)', 'start_time': '23.92', 'end_time': '30.94', 'source_sentence': '请问你的储蓄卡是一类账户么？本期账单还款还需要'}]}, {'keypoint': '确认储蓄卡开户6个月内是否有交易', 'matched': [{'sentence': '好的那这边和验证通过了那您这张中信信用卡的最后一笔交易是在是在什么时候或者是多少金额您要提供一下', 'score': 1.0, 'compared_source': '', 'regex': '最后.?一笔', 'start_time': '59.01', 'end_time': '64.44', 'source_sentence': '好的那这边和验证通过了那您这张中信信用卡的最后一笔交易是在是在什么时候或者是多少金额您要提供一下'}]}]
+    print("测试算法融合结果：", key_point.combine_result(le_result=le_result, regex_result=regex_result, word2vec_result=w2v_result))
