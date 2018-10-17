@@ -6,11 +6,12 @@ import numpy as np
 import jieba
 from scipy.spatial.distance import pdist
 
-
+stopwords_path = "data/stopwords.txt"
 model_path= "model/word2vec_include.model"
 model_loaded= Word2Vec.load(model_path)
 wordvec_size = len(model_loaded['账单'])
 zero_pad = [0 for n in range(wordvec_size)]
+stopwordlist = [line.strip() for line in open(stopwords_path, 'r', encoding="utf-8")]
 
 
 def corpus(path):
@@ -67,7 +68,7 @@ def levenshteinStr(sentence, simlist, threshold):
     @return {'sentence': "subsentence", # 原子句
              'score':'',  # 相似度分值，regex方法下置为1
              'compared_source':'匹配库句子', # 匹配库中的句子，regex方法下置为""
-             'matched_regex':''  # regex匹配到的式子
+             'regex':''  # regex匹配到的式子
             }
     """
     sim_temp_dict = {}
@@ -79,7 +80,7 @@ def levenshteinStr(sentence, simlist, threshold):
             sim_temp_dict = {'sentence': sentence, # 原子句
                              'score':sim_temp,  # 相似度分值
                              'compared_source':eachsim, # 匹配库中的句子
-                             'matched_regex':''}
+                             'regex':''}
         else:
             continue
     if not sim_temp_dict:
@@ -103,17 +104,14 @@ def top_keypoint(keypoints):
 
 def w2v_model_new(sentence, simi_list, threshold):
     """
-    
     @param sentence:str
     @param simi_list:  [{"sentence":str, "array":array}]
     @return sim_temp_dict:{'sentence':  '', # 原子句
                            'score':sim_temp,  # 相似度分值
                            'compared_source':'', # 匹配库中的句子
-                           'matched_regex':'' # 置为空}
+                           'regex':'' # 置为空}
     """
     sentence_vec=get_vec(sentence)
-   # print(len(sentence_vec[1]))
-
     sim_temp_dict = {}
     sim_temp = float(threshold)
     #print('simi',simi_list)
@@ -125,73 +123,9 @@ def w2v_model_new(sentence, simi_list, threshold):
             sim_temp_dict = {'sentence':  get_vec(sentence)[0], # 原子句
                              'score':sim_temp,  # 相似度分值
                              'compared_source':eachsim['sentence'], # 匹配库中的句子
-                             'matched_regex':''}
+                             'regex':''}
         else:
             continue
-    if not sim_temp_dict:
-        return None
-    else:
-        return sim_temp_dict
-
-def w2v_model(sentence,simi_list,threshold):
-    '''
-
-    :param sentence: 输入单句
-    :param simi_list: 匹配库
-    :param threshold: 输出相似度最大的句子的阈值
-    :return: [score, source_sentence, matched_sentence]
-    '''
-    stopwordlist = stopwordslist('data/ChineseStopWords.txt')
-    words = list(jieba.cut(sentence.strip()))
-    words_new=[]
-    for each_slice in words:
-        try:
-             vocab = model_loaded[each_slice]
-             words_new.append(each_slice)
-        except KeyError:
-            pass
-            # print("not in vocabulary")
-    words_list=[]
-    for wor in words_new:
-    	if wor not in stopwordlist:
-    		words_list.append(wor)
-    	else:
-    		pass
-
-    sim_temp_dict = {}
-    sim_temp = float(threshold)
-   # print(simi_list)
-    for candidate in simi_list:
-        candidate_new=[]
-        score = 0
-        #print('ca',candidate)
-        if candidate == '':
-            pass
-        else:
-            candidate_sentence = candidate
-            candidate = list(jieba.cut(candidate))
-            candidate_list=[]
-            for wor in candidate:
-            	if wor not in stopwordlist:
-            		candidate_list.append(wor)
-            	else:
-            		pass
-            if candidate_list==[]:
-            	pass
-            elif words_list==[]:
-            	pass
-            else:
-
-	            score = model_loaded.n_similarity(words_new, candidate_list)
-	            if score > sim_temp:
-	                sim_temp = score
-	                sim_temp_dict = {'sentence':  sentence, # 原子句
-                             'score':sim_temp,  # 相似度分值
-                             'compared_source':candidate_sentence, # 匹配库中的句子
-                             'matched_regex':''}
-	            else:
-
-	                continue
     if not sim_temp_dict:
         return None
     else:
@@ -207,7 +141,7 @@ def getsimlist_vec(list):
     result = []
     for eachsentence in list:
         wordlist = jieba.cut(eachsentence)
-        #wordlist = [word for word in list(wordlist) if word not in stopwordlist]
+        wordlist = [word for word in wordlist if word not in stopwordlist]
         count = 0
         sum = zero_pad
         for eachword in wordlist:
@@ -236,17 +170,9 @@ def getscore(sentence_vec, sim_vec):
     return 1 - score
 
 
-def stopwordslist(filepath):
-    #stoplist = {}.fromkeys([line.strip() for line in open(filepath,encoding='utf-8')])
-    stoplist =[]
-    with open(filepath,'r',encoding='utf-8') as f:
-        for line in f:
-            stoplist.append(line)
-
-    return stoplist
-
 def get_vec(sentence):
     s = jieba.cut(sentence)
+    s=[word for word in s if word not in stopwordlist] 
     count = 0
     sum = zero_pad
 
@@ -275,7 +201,7 @@ def regex(sentence, keywords):
     @return {'sentence': sentence, # 原子句
              'score':1,  # 相似度分值
              'compared_source':'',
-             'matched_regex':pattern}
+             'regex':pattern}
     """
     matched_list = []
     if keywords == []:
@@ -286,7 +212,7 @@ def regex(sentence, keywords):
                 return {'sentence': sentence, # 原子句
                         'score':1,  # 相似度分值
                         'compared_source':'',
-                        'matched_regex':pattern}
+                        'regex':pattern}
         return None
 
 def combine(matched):
@@ -295,7 +221,7 @@ def combine(matched):
     @param matched:list,  [{'sentence': '',  # 匹配到的原句中的句子
                             'score': 0.53,   # 相似度分值
                             'compared_source': '', # 匹配库中的句子
-                            'matched_regex': '', # 置空
+                            'regex': '', # 置空
                             'start_time': '0.00', 
                             'end_time': '3.83', 
                             'source_sentence': ''  # 子句源句
@@ -303,7 +229,7 @@ def combine(matched):
     @return list,   [{'sentence': '',  # 匹配到的原句中的句子
                       'score': 0.53,   # 相似度分值
                       'compared_source': '', # 匹配库中的句子
-                      'matched_regex': '', # 置空
+                      'regex': '', # 置空
                       'start_time': '0.00', 
                       'end_time': '3.83', 
                       'source_sentence': ''  # 子句源句
